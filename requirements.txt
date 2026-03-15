@@ -1,5 +1,5 @@
-flask
+Flask
 requests
+mysql-connector-python
 python-dotenv
 gunicorn
-mysql-connector-python
