@@ -4,80 +4,79 @@ import os
 import mysql.connector
 from dotenv import load_dotenv
 
-# -------------------------------------------------
 # Load environment variables
-# -------------------------------------------------
-
 load_dotenv()
 
-# -------------------------------------------------
-# Read database credentials
-# -------------------------------------------------
-
+# Database credentials
 DB_HOST = os.getenv("DB_HOST")
 DB_PORT = int(os.getenv("DB_PORT", 3306))
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_NAME = os.getenv("DB_NAME")
 
-# -------------------------------------------------
-# Function to connect to database
-# -------------------------------------------------
-
-def get_db_connection():
-    return mysql.connector.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        database=DB_NAME
-    )
-
-# -------------------------------------------------
-# Function to save API requests
-# -------------------------------------------------
-
-def save_request(api_type, query_value):
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    sql = "INSERT INTO api_requests (api_type, query_value) VALUES (%s, %s)"
-    values = (api_type, query_value)
-
-    cursor.execute(sql, values)
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-# -------------------------------------------------
-# Flask app initialization
-# -------------------------------------------------
-
 app = Flask(__name__)
 
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
-# -------------------------------------------------
-# Home page
-# -------------------------------------------------
+# -----------------------------------------
+# Safe DB connection
+# -----------------------------------------
+def get_db_connection():
+    try:
+        conn = mysql.connector.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+            connection_timeout=5
+        )
+        return conn
+    except Exception as e:
+        print("Database connection failed:", e)
+        return None
 
+
+# -----------------------------------------
+# Save API request
+# -----------------------------------------
+def save_request(api_type, query_value):
+
+    conn = get_db_connection()
+
+    if conn is None:
+        return
+
+    cursor = conn.cursor()
+
+    try:
+        sql = "INSERT INTO api_requests (api_type, query_value) VALUES (%s, %s)"
+        cursor.execute(sql, (api_type, query_value))
+        conn.commit()
+    except Exception as e:
+        print("Insert failed:", e)
+
+    cursor.close()
+    conn.close()
+
+
+# -----------------------------------------
+# Home page
+# -----------------------------------------
 @app.route("/")
 def home():
     return render_template("index.html")
 
-# -------------------------------------------------
-# Country API
-# -------------------------------------------------
 
+# -----------------------------------------
+# Country API
+# -----------------------------------------
 @app.route("/api/country/<country_name>")
 def get_country(country_name):
 
     save_request("country", country_name)
 
     url = f"https://restcountries.com/v3.1/name/{country_name}"
-
     response = requests.get(url)
     data = response.json()
 
@@ -92,10 +91,10 @@ def get_country(country_name):
 
     return jsonify(result)
 
-# -------------------------------------------------
-# Weather API
-# -------------------------------------------------
 
+# -----------------------------------------
+# Weather API
+# -----------------------------------------
 @app.route("/api/weather/<city>")
 def get_weather(city):
 
@@ -118,10 +117,10 @@ def get_weather(city):
 
     return jsonify(result)
 
-# -------------------------------------------------
-# Recipe API
-# -------------------------------------------------
 
+# -----------------------------------------
+# Recipe API
+# -----------------------------------------
 @app.route("/api/recipe/<food>")
 def get_recipe(food):
 
@@ -147,14 +146,18 @@ def get_recipe(food):
 
     return jsonify(results)
 
-# -------------------------------------------------
-# Search History API
-# -------------------------------------------------
 
+# -----------------------------------------
+# Search history
+# -----------------------------------------
 @app.route("/api/history")
 def get_history():
 
     conn = get_db_connection()
+
+    if conn is None:
+        return jsonify([])
+
     cursor = conn.cursor()
 
     query = """
@@ -181,18 +184,18 @@ def get_history():
 
     return jsonify(history)
 
-# -------------------------------------------------
-# Health Check
-# -------------------------------------------------
 
+# -----------------------------------------
+# Health check
+# -----------------------------------------
 @app.route("/health")
 def health():
     return "API Explorer running!"
 
-# -------------------------------------------------
-# Run Flask server
-# -------------------------------------------------
 
+# -----------------------------------------
+# Run server locally
+# -----------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
